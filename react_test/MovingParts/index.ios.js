@@ -22,10 +22,7 @@ class MovingParts extends Component {
     return (
       <View style={styles.app.container}>
         <TitleBar />
-        <View style={[styles.app.container, {flexDirection: 'row'}]}>
-          <BehaviorChains />
-          <SideBar />
-        </View>
+        <Tableau />
       </View>
     );
   }
@@ -55,56 +52,115 @@ class SideBar extends Component {
 }
 
 
-class BehaviorChains extends Component {
+class Tableau extends Component {
   state = {
     chains: ['red', 'blue'],
-  };
-
-  render() {
-    return (
-      <View style={[styles.app.container, styles.app.centered]}>
-        {this.state.chains.map(chain => <Behavior key={chain} color={chain}/>)}
-      </View>
-    );
-  }
-}
-
-class Behavior extends Component {
-  state = {
-    position: {x: 0, y: 0}
+    center: {x: 0, y: 0},
+    scale: 1,
   };
   constructor(props) {
     super(props);
-    let scale = this.props.scale || 1;
-    this.scale = new Animated.Value(scale);
-    this.pan = new Animated.ValueXY(this.props.location);
-//     this.position = {x: 0, y: 0,};
+    for (let prop in this.state) {
+      let value = props[prop];
+      if (value) {this.setState({[prop]: value})}
+    }
+  }
+  componentWillMount() {
+    let {center, scale} = this.state;
+    this.pan = new Animated.ValueXY(center);
+    this.pan.addListener(value => center = value);
+    this.scale = new Animated.Value(this.state.scale);
+    this.scale.addListener(value => scale = value);
     this.panResponder = PanResponder.create({
       onStartShouldSetPanResponder: () => {return true},
-      onMoveShouldSetPanResponderCapture: () => {return true},
+//       onMoveShouldSetPanResponder: () => {return true},
       onPanResponderGrant: (e, guestureState) => {
-        Animated.timing(this.scale, {
-          toValue: scale * 1.1,
-          duration: 100,
-        }).start();
-        this.pan.setOffset(this.state.position);
-        this.pan.setValue({x: 0, y: 0});
+//         console.log(this.constructor.name, {...guestureState});
+        this.pan.setOffset(center);
+        this.pan.setValue({x:0, y:0});
       },
       onPanResponderMove: Animated.event([null, {
         dx: this.pan.x,
         dy: this.pan.y
       }]),
       onPanResponderRelease: (e, guestureState) => {
+        this.pan.flattenOffset();
+        this.setState({center, scale});
+      }
+    })
+  }
+  componentWillUnmount() {
+    this.pan.removeAllListeners();
+    this.scale.removeAllListeners();
+  }
+  get style() {
+    return [
+      styles.app.container,
+      styles.app.centered,
+      {
+        transform: this.pan.getTranslateTransform().concat({scale: this.scale})
+      },
+    ];
+  }
+  render() {
+    return (
+      <View style={[styles.app.container, {flexDirection: 'row'}]}>
+        <Animated.View style={this.style} {...this.panResponder.panHandlers}>
+          {this.state.chains.map(chain => <Behavior key={chain} color={chain}/>)}
+        </Animated.View>
+        <SideBar />
+      </View>
+    );
+  }
+}
+
+
+class Behavior extends Component {
+  state = {
+    position: {x: 0, y: 0},
+    scale: 1,
+  };
+  constructor(props) {
+    super(props);
+    for (let prop in this.state) {
+      let value = props[prop];
+      if (value) {this.setState({[prop]: value})}
+    }
+  }
+  componentWillMount() {
+    let position = this.state.position;
+    this.scale = new Animated.Value(this.state.scale);
+    this.pan = new Animated.ValueXY(position);
+    this.pan.addListener(value => position = value);
+    let onPanEnd = (e, guestureState) => {
         Animated.timing(this.scale, {
-          toValue: scale,
+          toValue: this.state.scale,
           duration: 100,
         }).start()
         this.pan.flattenOffset();
+        this.setState({position});
+    }
+    this.panResponder = PanResponder.create({
+      onStartShouldSetPanResponder: () => {return true},
+//       onMoveShouldSetPanResponder: () => {return true},
+      onMoveShouldSetPanResponderCapture: () => {return true},
+      onPanResponderTerminationRequiest: () => {return false},
+      onPanResponderGrant: (e, guestureState) => {
+        console.log(this.constructor.name, {...guestureState});
+        Animated.timing(this.scale, {
+          toValue: this.state.scale * 1.1,
+          duration: 100,
+        }).start();
+        this.pan.setOffset(position);
+        this.pan.setValue({x: 0, y: 0});
       },
+      onPanResponderMove: Animated.event([null, {
+        dx: this.pan.x,
+        dy: this.pan.y
+      }]),
+      onPanResponderRelease: onPanEnd,
+      onPanResponderTerminate: onPanEnd,
     });
-  }
-  componentWillMount() {
-    this.pan.addListener(position => this.setState({position: position}));
   }
   componentWillUnmount() {
     this.pan.removeAllListeners();
@@ -119,7 +175,6 @@ class Behavior extends Component {
     ];
   }
   render() {
-    console.log({...this.style[1]})
     return (
 //       <Animated.View style={[this.style, styles.app.centered]} {...this.panResponder.panHandlers}>
 //         <Text style={styles.title_bar.title_text}>
@@ -130,6 +185,7 @@ class Behavior extends Component {
     );
   }
 }
+
 
 class BehaviorText extends Component {
   state = {
