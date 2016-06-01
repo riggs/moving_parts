@@ -8,6 +8,7 @@ import React, {
   AppRegistry,
   Component,
   PanResponder,
+  PropTypes,
   StyleSheet,
   Text,
   TextInput,
@@ -53,10 +54,18 @@ class SideBar extends Component {
 
 
 class Tableau extends Component {
+  static propTypes = {
+    chanis: PropTypes.arrayOf(PropTypes.string),
+    center: PropTypes.shape({
+      x: PropTypes.number,
+      y: PropTypes.number,
+    }),
+    zoom: PropTypes.number,
+  }
   state = {
     chains: ['red', 'blue'],
     center: {x: 0, y: 0},
-    scale: 1,
+    zoom: 1,
   };
   constructor(props) {
     super(props);
@@ -66,47 +75,44 @@ class Tableau extends Component {
     }
   }
   componentWillMount() {
-    let {center, scale} = this.state;
-    this.pan = new Animated.ValueXY(center);
-    this.pan.addListener(value => center = value);
-    this.scale = new Animated.Value(this.state.scale);
-    this.scale.addListener(value => scale = value);
+    this.pan = new Animated.ValueXY(this.state.center);
+//     let pan_listener_callback = (center) => this.setState({center});
+    let pan_listener_callback = (center) => {
+      console.log(center);
+      this.setState({center})
+    };
+    let listenerID = this.pan.addListener(pan_listener_callback);
+    this.zoom = new Animated.Value(this.state.zoom);
+    this.zoom.addListener(({value}) => this.setState({zoom: value}));
     this.panResponder = PanResponder.create({
       onStartShouldSetPanResponder: () => {return true},
-//       onMoveShouldSetPanResponder: () => {return true},
       onPanResponderGrant: (e, guestureState) => {
-//         console.log(this.constructor.name, {...guestureState});
-        this.pan.setOffset(center);
+        console.log(this.constructor.name, {...guestureState}, this.state.center);
+        this.pan.removeListener(listenerID);
+        this.pan.setOffset(this.state.center);
         this.pan.setValue({x:0, y:0});
+        listenerID = this.pan.addListener(pan_listener_callback);
       },
       onPanResponderMove: Animated.event([null, {
         dx: this.pan.x,
         dy: this.pan.y
       }]),
       onPanResponderRelease: (e, guestureState) => {
+//         console.log(this.constructor.name, {...guestureState});
         this.pan.flattenOffset();
-        this.setState({center, scale});
       }
     })
   }
   componentWillUnmount() {
     this.pan.removeAllListeners();
-    this.scale.removeAllListeners();
-  }
-  get style() {
-    return [
-      styles.app.container,
-      styles.app.centered,
-      {
-        transform: this.pan.getTranslateTransform().concat({scale: this.scale})
-      },
-    ];
+    this.zoom.removeAllListeners();
   }
   render() {
     return (
       <View style={[styles.app.container, {flexDirection: 'row'}]}>
-        <Animated.View style={this.style} {...this.panResponder.panHandlers}>
-          {this.state.chains.map(chain => <Behavior key={chain} color={chain}/>)}
+        <Animated.View style={[styles.app.container, styles.app.centered]} {...this.panResponder.panHandlers}>
+          {this.state.chains.map(chain => <Behavior key={chain} color={chain}
+                                            offset={this.state.center} zoom={this.state.zoom}/>)}
         </Animated.View>
         <SideBar />
       </View>
@@ -116,6 +122,19 @@ class Tableau extends Component {
 
 
 class Behavior extends Component {
+  static propTypes = {
+    offset: PropTypes.shape({
+      x: PropTypes.number,
+      y: PropTypes.number,
+    }).isRequired,
+    zoom: PropTypes.number.isRequired,
+    color: PropTypes.string.isRequired,
+    position: PropTypes.shape({
+      x: PropTypes.number,
+      y: PropTypes.number,
+    }),
+    scale: PropTypes.number,
+  };
   state = {
     position: {x: 0, y: 0},
     scale: 1,
@@ -128,27 +147,31 @@ class Behavior extends Component {
     }
   }
   componentWillMount() {
-    let position = this.state.position;
-    this.scale = new Animated.Value(this.state.scale);
+    let position = {
+      x: this.state.position.x + this.props.offset.x,
+      y: this.state.position.y + this.props.offset.y
+    };
     this.pan = new Animated.ValueXY(position);
     this.pan.addListener(value => position = value);
+    let scale = this.state.scale * this.props.zoom;
+    this.scale = new Animated.Value(scale);
     let onPanEnd = (e, guestureState) => {
-        Animated.timing(this.scale, {
-          toValue: this.state.scale,
-          duration: 100,
-        }).start()
-        this.pan.flattenOffset();
-        this.setState({position});
+      Animated.timing(this.scale, {
+        toValue: scale,
+        duration: 100,
+      }).start()
+      this.pan.flattenOffset();
+      this.setState({position: {
+        x: position.x - this.props.offset.x,
+        y: position.y - this.props.offset.y,
+      }});
     }
     this.panResponder = PanResponder.create({
       onStartShouldSetPanResponder: () => {return true},
-//       onMoveShouldSetPanResponder: () => {return true},
-      onMoveShouldSetPanResponderCapture: () => {return true},
-      onPanResponderTerminationRequiest: () => {return false},
       onPanResponderGrant: (e, guestureState) => {
-        console.log(this.constructor.name, {...guestureState});
+//         console.log(this.constructor.name, {...guestureState});
         Animated.timing(this.scale, {
-          toValue: this.state.scale * 1.1,
+          toValue: scale * 1.1,
           duration: 100,
         }).start();
         this.pan.setOffset(position);
@@ -164,6 +187,13 @@ class Behavior extends Component {
   }
   componentWillUnmount() {
     this.pan.removeAllListeners();
+    this.scale.removeAllListeners();
+  }
+  componentWillReceiveProps(nextProps) {
+    this.pan.setValue({
+      x: this.state.position.x + this.props.offset.x,
+      y: this.state.position.y + this.props.offset.y
+    });
   }
   get style() {
     return [
@@ -175,6 +205,7 @@ class Behavior extends Component {
     ];
   }
   render() {
+    console.log(this.props.offset, this.props.color);
     return (
 //       <Animated.View style={[this.style, styles.app.centered]} {...this.panResponder.panHandlers}>
 //         <Text style={styles.title_bar.title_text}>
